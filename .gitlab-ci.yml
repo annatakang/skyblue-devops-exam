@@ -1,0 +1,13 @@
+stages:
+  - validate
+
+runner_check:
+  stage: validate
+  tags:
+    - skyblue-shell
+  script:
+    - whoami
+    - git --version
+    - docker info --format '{{.ServerVersion}}'
+    - kubectl version --client
+    - helm version --short
