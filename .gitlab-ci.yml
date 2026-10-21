@@ -3,6 +3,10 @@ stages:
   - build
   - test
   - publish
+  - deploy_dev
+  - deploy_qa
+  - deploy_staging
+  - deploy_prod
 
 default:
   tags:
@@ -69,3 +73,40 @@ validate_chart:
   script:
     - helm lint helm/skyblue --set-string image.tag="$CI_COMMIT_SHA"
     - helm template skyblue helm/skyblue --namespace dev --set-string image.tag="$CI_COMMIT_SHA" > /dev/null
+
+deploy_dev:
+  stage: deploy_dev
+  environment:
+    name: dev
+  resource_group: skyblue-dev
+  script:
+    - ./scripts/deploy.sh dev
+
+deploy_qa:
+  stage: deploy_qa
+  environment:
+    name: qa
+  resource_group: skyblue-qa
+  script:
+    - ./scripts/deploy.sh qa
+
+deploy_staging:
+  stage: deploy_staging
+  environment:
+    name: staging
+  resource_group: skyblue-staging
+  script:
+    - ./scripts/deploy.sh staging
+
+deploy_prod:
+  stage: deploy_prod
+  environment:
+    name: prod
+  resource_group: skyblue-prod
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: false
+    - when: never
+  script:
+    - ./scripts/deploy.sh prod
