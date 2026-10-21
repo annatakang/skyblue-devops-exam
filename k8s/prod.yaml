@@ -1,0 +1,291 @@
+---
+# Source: skyblue/templates/storage.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: skyblue-users-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: "local-path"
+  resources:
+    requests:
+      storage: "1Gi"
+---
+# Source: skyblue/templates/storage.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: skyblue-orders-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: "local-path"
+  resources:
+    requests:
+      storage: "1Gi"
+---
+# Source: skyblue/templates/services.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: skyblue-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: skyblue
+    app.kubernetes.io/component: gateway
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+# Source: skyblue/templates/services.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: skyblue-users
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: skyblue
+    app.kubernetes.io/component: users
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+# Source: skyblue/templates/services.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: skyblue-orders
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: skyblue
+    app.kubernetes.io/component: orders
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+# Source: skyblue/templates/deployments.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skyblue-gateway
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: skyblue
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: skyblue
+        app.kubernetes.io/component: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: "annatakang77/skyblue-gateway:5873bd833b8a5c527c7c106fa0cc6e083d0c5953"
+          imagePullPolicy: IfNotPresent
+          command:
+            - uvicorn
+          args:
+            - main:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: USERS_SERVICE_URL
+              value: "http://skyblue-users:8000"
+            - name: ORDERS_SERVICE_URL
+              value: "http://skyblue-orders:8000"
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: skyblue-jwt
+                  key: SECRET_KEY
+          startupProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+# Source: skyblue/templates/deployments.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skyblue-users
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: skyblue
+      app.kubernetes.io/component: users
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: skyblue
+        app.kubernetes.io/component: users
+    spec:
+      initContainers:
+        - name: seed-users
+          image: "annatakang77/skyblue-users:5873bd833b8a5c527c7c106fa0cc6e083d0c5953"
+          command:
+            - sh
+            - -ec
+            - |
+              if [ ! -e /data/users.json ]; then
+                cp /app/fake/users.json /data/users.json
+              fi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: users
+          image: "annatakang77/skyblue-users:5873bd833b8a5c527c7c106fa0cc6e083d0c5953"
+          imagePullPolicy: IfNotPresent
+          command:
+            - uvicorn
+          args:
+            - main:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: USERS_DB_PATH
+              value: /data/users.json
+          startupProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: skyblue-users-data
+---
+# Source: skyblue/templates/deployments.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skyblue-orders
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: skyblue
+      app.kubernetes.io/component: orders
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: skyblue
+        app.kubernetes.io/component: orders
+    spec:
+      containers:
+        - name: orders
+          image: "annatakang77/skyblue-orders:5873bd833b8a5c527c7c106fa0cc6e083d0c5953"
+          imagePullPolicy: IfNotPresent
+          command:
+            - uvicorn
+          args:
+            - main:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              value: sqlite:///data/orders.sqlite3
+          startupProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: skyblue-orders-data
