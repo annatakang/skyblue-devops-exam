@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 from fastapi import FastAPI, Header
@@ -28,7 +29,7 @@ async def create_user(order: OrderIn_Pydantic,
 
 register_tortoise(
     app,
-    db_url='sqlite://:memory:',
+    db_url=os.environ.get('DATABASE_URL', 'sqlite://:memory:'),
     modules={'models': ['models']},
     generate_schemas=True,
     add_exception_handlers=True,

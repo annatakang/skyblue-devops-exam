@@ -1,0 +1,7 @@
+image:
+  prefix: annatakang77/skyblue
+  tag: ""
+jwtSecretName: skyblue-jwt
+storage:
+  className: local-path
+  size: 1Gi

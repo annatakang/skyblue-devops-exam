@@ -1,0 +1,16 @@
+{{- range $service := list "gateway" "users" "orders" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $.Release.Name }}-{{ $service }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/component: {{ $service }}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+{{- end }}

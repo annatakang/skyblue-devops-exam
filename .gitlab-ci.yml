@@ -1,4 +1,5 @@
 stages:
+  - validate
   - build
   - test
   - publish
@@ -32,6 +33,7 @@ test_imports:
     - |
       set -eu
       docker run --rm \
+        -e SECRET_KEY=ci-import-check-only \
         -e USERS_SERVICE_URL=http://skyblue-users:8000 \
         -e ORDERS_SERVICE_URL=http://skyblue-orders:8000 \
         "${IMAGE_PREFIX}-gateway:${CI_COMMIT_SHA}" \
@@ -61,3 +63,9 @@ publish_images:
       for service in gateway users orders; do
         docker push "${IMAGE_PREFIX}-${service}:${CI_COMMIT_SHA}"
       done
+
+validate_chart:
+  stage: validate
+  script:
+    - helm lint helm/skyblue --set-string image.tag="$CI_COMMIT_SHA"
+    - helm template skyblue helm/skyblue --namespace dev --set-string image.tag="$CI_COMMIT_SHA" > /dev/null

@@ -1,0 +1,14 @@
+{{- range $service := list "users" "orders" }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $.Release.Name }}-{{ $service }}-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ $.Values.storage.className | quote }}
+  resources:
+    requests:
+      storage: {{ $.Values.storage.size | quote }}
+{{- end }}

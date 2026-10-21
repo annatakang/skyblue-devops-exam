@@ -1,0 +1,105 @@
+{{- $tag := required "Set image.tag to a published commit SHA" .Values.image.tag }}
+{{- range $service := list "gateway" "users" "orders" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-{{ $service }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/component: {{ $service }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ $.Release.Name }}
+        app.kubernetes.io/component: {{ $service }}
+    spec:
+      {{- if eq $service "users" }}
+      initContainers:
+        - name: seed-users
+          image: "{{ $.Values.image.prefix }}-users:{{ $tag }}"
+          command:
+            - sh
+            - -ec
+            - |
+              if [ ! -e /data/users.json ]; then
+                cp /app/fake/users.json /data/users.json
+              fi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      {{- end }}
+      containers:
+        - name: {{ $service }}
+          image: "{{ $.Values.image.prefix }}-{{ $service }}:{{ $tag }}"
+          imagePullPolicy: IfNotPresent
+          command:
+            - uvicorn
+          args:
+            - main:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            {{- if eq $service "gateway" }}
+            - name: USERS_SERVICE_URL
+              value: "http://{{ $.Release.Name }}-users:8000"
+            - name: ORDERS_SERVICE_URL
+              value: "http://{{ $.Release.Name }}-orders:8000"
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.jwtSecretName }}
+                  key: SECRET_KEY
+            {{- else if eq $service "users" }}
+            - name: USERS_DB_PATH
+              value: /data/users.json
+            {{- else }}
+            - name: DATABASE_URL
+              value: sqlite:///data/orders.sqlite3
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          {{- if ne $service "gateway" }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- end }}
+      {{- if ne $service "gateway" }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $.Release.Name }}-{{ $service }}-data
+      {{- end }}
+{{- end }}
