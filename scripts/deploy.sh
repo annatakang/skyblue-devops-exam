@@ -32,3 +32,7 @@ for service in gateway users orders; do
 done
 
 kubectl get pods,pvc --namespace "$namespace"
+
+gateway_ip="$(kubectl get service skyblue-gateway --namespace "$namespace" --output=jsonpath='{.spec.clusterIP}')"
+
+python3 scripts/integration.py "http://${gateway_ip}:8000" "$namespace"
