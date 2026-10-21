@@ -110,3 +110,21 @@ deploy_prod:
     - when: never
   script:
     - ./scripts/deploy.sh prod
+
+unit_tests:
+  stage: test
+  script:
+    - mkdir -p reports
+    - |
+      docker run --rm \
+        -v "$CI_PROJECT_DIR/tests/unit:/tests:ro" \
+        -v "$CI_PROJECT_DIR/reports:/reports" \
+        -e PYTHONPATH=/app \
+        "${IMAGE_PREFIX}-users:${CI_COMMIT_SHA}" \
+        sh -ec 'pip install --no-cache-dir pytest==7.4.4 && python -m pytest /tests -v --junitxml=/reports/unit-tests.xml'
+  artifacts:
+    when: always
+    reports:
+      junit: reports/unit-tests.xml
+    paths:
+      - reports/unit-tests.xml
