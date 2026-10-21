@@ -1,13 +1,63 @@
 stages:
-  - validate
+  - build
+  - test
+  - publish
 
-runner_check:
-  stage: validate
+default:
   tags:
     - skyblue-shell
+
+variables:
+  IMAGE_PREFIX: "annatakang77/skyblue"
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - when: never
+
+build_images:
+  stage: build
   script:
-    - whoami
-    - git --version
-    - docker info --format '{{.ServerVersion}}'
-    - kubectl version --client
-    - helm version --short
+    - |
+      set -eu
+      for service in gateway users orders; do
+        docker build --pull \
+          -t "${IMAGE_PREFIX}-${service}:${CI_COMMIT_SHA}" \
+          "./${service}"
+      done
+
+test_imports:
+  stage: test
+  script:
+    - |
+      set -eu
+      docker run --rm \
+        -e USERS_SERVICE_URL=http://skyblue-users:8000 \
+        -e ORDERS_SERVICE_URL=http://skyblue-orders:8000 \
+        "${IMAGE_PREFIX}-gateway:${CI_COMMIT_SHA}" \
+        python -c 'from main import app; print("Gateway import OK")'
+
+      for service in users orders; do
+        docker run --rm \
+          "${IMAGE_PREFIX}-${service}:${CI_COMMIT_SHA}" \
+          python -c 'from main import app; print("Application import OK")'
+      done
+
+publish_images:
+  stage: publish
+  script:
+    - |
+      set -eu
+      : "${DOCKERHUB_USERNAME:?Set DOCKERHUB_USERNAME in GitLab}"
+      : "${DOCKERHUB_TOKEN:?Set DOCKERHUB_TOKEN in GitLab}"
+
+      export DOCKER_CONFIG
+      DOCKER_CONFIG="$(mktemp -d)"
+      trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+
+      printf '%s' "$DOCKERHUB_TOKEN" |
+        docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+
+      for service in gateway users orders; do
+        docker push "${IMAGE_PREFIX}-${service}:${CI_COMMIT_SHA}"
+      done
